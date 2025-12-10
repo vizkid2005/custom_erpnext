@@ -1,110 +1,237 @@
-[![Build Stable](https://github.com/frappe/frappe_docker/actions/workflows/build_stable.yml/badge.svg)](https://github.com/frappe/frappe_docker/actions/workflows/build_stable.yml)
-[![Build Develop](https://github.com/frappe/frappe_docker/actions/workflows/build_develop.yml/badge.svg)](https://github.com/frappe/frappe_docker/actions/workflows/build_develop.yml)
+✅ ERPNext + HRMS (Version 15) Docker Setup – Clean Installation & Backup Restore Guide
 
-Everything about [Frappe](https://github.com/frappe/frappe) and [ERPNext](https://github.com/frappe/erpnext) in containers.
+This guide documents the exact steps required to:
 
-# Getting Started
+Build a custom ERPNext + HRMS v15 Docker image
 
-**New to Frappe Docker?** Read the [Getting Started Guide](docs/getting-started.md) for a comprehensive overview of repository structure, development workflow, custom apps, Docker concepts, and quick start examples.
+Spin up a clean frappe_docker environment
 
-To get started you need [Docker](https://docs.docker.com/get-docker/), [docker-compose](https://docs.docker.com/compose/), and [git](https://docs.github.com/en/get-started/getting-started-with-git/set-up-git) setup on your machine. For Docker basics and best practices refer to Docker's [documentation](http://docs.docker.com).
+Create a new site (localhost)
 
-Once completed, chose one of the following two sections for next steps.
+Restore a full ERPNext v15 backup
 
-### Try in Play With Docker
+Fix all common issues (site routing, DB users, permissions, etc.)
 
-To play in an already set up sandbox, in your browser, click the button below:
+It reflects the final working solution used in December 2025.
 
-<a href="https://labs.play-with-docker.com/?stack=https://raw.githubusercontent.com/frappe/frappe_docker/main/pwd.yml">
-  <img src="https://raw.githubusercontent.com/play-with-docker/stacks/master/assets/images/button.png" alt="Try in PWD"/>
-</a>
+🧱 1. Prerequisites
 
-### Try on your Dev environment
+Docker & Docker Compose installed
 
-First clone the repo:
+Apple Silicon: use linux/arm64
 
-```sh
-git clone https://github.com/frappe/frappe_docker
-cd frappe_docker
-```
+Repo cloned:
 
-Then run: `docker compose -f pwd.yml up -d`
+git clone <your-custom-repo> custom_erpnext
+cd custom_erpnext
 
-### To run on ARM64 architecture follow this instructions
 
-After you clone the repo and `cd frappe_docker`, run this command to build multi-architecture images specifically for ARM64.
+Backup files available:
 
-`docker buildx bake --no-cache --set "*.platform=linux/arm64"`
+database.sql.gz
+public_files.tar
+private_files.tar
+site_config.json  # old one, for encryption_key
 
-and then
+📦 2. Build ERPNext + HRMS Custom Image
 
-- add `platform: linux/arm64` to all services in the `pwd.yml`
-- replace the current specified versions of erpnext image on `pwd.yml` with `:latest`
+Create apps.json:
 
-Then run: `docker compose -f pwd.yml up -d`
+[
+  { "url": "https://github.com/frappe/erpnext", "branch": "version-15" },
+  { "url": "https://github.com/frappe/hrms", "branch": "version-15" }
+]
 
-## Final steps
 
-Wait for 5 minutes for ERPNext site to be created or check `create-site` container logs before opening browser on port 8080. (username: `Administrator`, password: `admin`)
+Base64-encode it (macOS compatible):
 
-If you ran in a Dev Docker environment, to view container logs: `docker compose -f pwd.yml logs -f create-site`. Don't worry about some of the initial error messages, some services take a while to become ready, and then they go away.
+export APPS_JSON_BASE64="$(base64 < apps.json | tr -d '\n')"
 
-# Documentation
 
-### [Getting Started Guide](docs/getting-started.md)
+Build your image:
 
-### [Frequently Asked Questions](https://github.com/frappe/frappe_docker/wiki/Frequently-Asked-Questions)
+docker build \
+  --no-cache \
+  --build-arg FRAPPE_PATH=https://github.com/frappe/frappe \
+  --build-arg FRAPPE_BRANCH=version-15 \
+  --build-arg PYTHON_VERSION=3.11.6 \
+  --build-arg NODE_VERSION=18.18.2 \
+  --build-arg APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --file=images/layered/Containerfile \
+  --tag=erpnext-hrms-local:15 .
 
-### [Getting Started](#getting-started)
+⚙️ 3. Configure Environment (example.env)
 
-- [Quick Start (Linux/Mac)](docs/01-getting-started/01-quick-start-linux-mac.md)
-- [Single Compose Setup](docs/01-getting-started/02-single-compose-setup.md)
+Edit example.env and include at minimum:
 
-### [Setup](#setup)
+CUSTOM_IMAGE=erpnext-hrms-local
+CUSTOM_TAG=15
+PULL_POLICY=never
 
-- [Container Setup Overview](docs/02-setup/01-overview.md)
-- [Build Setup](docs/02-setup/02-build-setup.md)
-- [Start Setup](docs/02-setup/03-start-setup.md)
-- [Environment Variables](docs/02-setup/04-env-variables.md)
-- [Compose Overrides](docs/02-setup/05-overrides.md)
-- [Setup Examples](docs/02-setup/06-setup-examples.md)
-- [Single Server Example](docs/02-setup/07-single-server-example.md)
+PLATFORM=linux/arm64     # on Apple Silicon
 
-### [Production](#production)
+MYSQL_ROOT_PASSWORD=123
+MARIADB_ROOT_PASSWORD=123
 
-- [TLS/SSL Setup](docs/03-production/01-tls-ssl-setup.md)
-- [Backup Strategy](docs/03-production/02-backup-strategy.md)
-- [Multi-Tenancy](docs/03-production/03-multi-tenancy.md)
+SITE_NAME=localhost
+ADMIN_PASSWORD=Admin123!
 
-### [Operations](#operations)
+# Required when accessing via IP (e.g., 192.168.4.10)
+FRAPPE_SITE_NAME_HEADER=localhost
 
-- [Site Operations](docs/04-operations/01-site-operations.md)
+🧩 4. Generate Clean Compose File
+docker compose --env-file example.env \
+  -f compose.yaml \
+  -f overrides/compose.mariadb.yaml \
+  -f overrides/compose.redis.yaml \
+  -f overrides/compose.noproxy.yaml \
+  config > compose.custom.yaml
 
-### [Development](#development)
 
-- [Development Guide](docs/05-development/01-development.md)
-- [Debugging](docs/05-development/02-debugging.md)
-- [Local Services Connection](docs/05-development/03-local-services-connection.md)
+Remove any platform: linux/amd64 lines if present.
 
-### [Migration](#migration)
+🧹 5. Remove Existing Containers & Volumes (clean start)
+docker compose -f compose.custom.yaml down -v
+docker volume rm frappe_docker_db-data frappe_docker_sites frappe_docker_redis-queue-data 2>/dev/null
 
-- [Migrate from Multi-Image Setup](docs/06-migration/01-migrate-from-multi-image-setup.md)
+🚀 6. Start Fresh Stack
+docker compose -f compose.custom.yaml up -d
 
-### [Troubleshooting](#troubleshooting)
 
-- [Troubleshoot Guide](docs/07-troubleshooting/01-troubleshoot.md)
-- [Windows Nginx Entrypoint Error](docs/07-troubleshooting/02-windows-nginx-entrypoint-error.md)
+Check containers:
 
-### [Reference](#reference)
+docker ps
 
-- [Build Version 10 Images](docs/08-reference/01-build-version-10-images.md)
+🏗 7. Create a New Site (localhost)
 
-# Contributing
+Inside backend:
 
-If you want to contribute to this repo refer to [CONTRIBUTING.md](CONTRIBUTING.md)
+docker compose -f compose.custom.yaml exec backend bash
+cd /home/frappe/frappe-bench
 
-This repository is only for container related stuff. You also might want to contribute to:
 
-- [Frappe framework](https://github.com/frappe/frappe#contributing),
-- [ERPNext](https://github.com/frappe/erpnext#contributing),
-- [Frappe Bench](https://github.com/frappe/bench).
+Create site:
+
+bench new-site localhost \
+  --admin-password "Admin123!" \
+  --db-root-username root \
+  --db-root-password "123" \
+  --install-app erpnext \
+  --install-app hrms
+
+
+Set default:
+
+bench set-default-site localhost
+exit
+
+
+Restart:
+
+docker compose -f compose.custom.yaml restart backend frontend websocket scheduler queue-short queue-long
+
+
+You should now see ERPNext login at:
+
+http://localhost:8080
+
+http://192.168.4.10:8080
+
+♻️ 8. Restore Database Backup
+
+Place your backup in /backups/erp/.
+
+8.1 Extract SQL
+gzip -d /backups/erp/database.sql.gz
+
+8.2 Copy into db container
+docker compose -f compose.custom.yaml cp /backups/erp/database.sql db:/tmp/database.sql
+
+8.3 Get DB name & password from site_config.json
+docker compose -f compose.custom.yaml exec backend bash -c \
+  "cat /home/frappe/frappe-bench/sites/localhost/site_config.json | grep -E 'db_name|db_password'"
+
+
+Example:
+
+"db_name": "_77f5e42251d79843",
+"db_password": "FvbE6ZYLo*RWEWsB"
+
+8.4 Import SQL
+docker compose -f compose.custom.yaml exec db bash -c \
+  'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" _77f5e42251d79843 < /tmp/database.sql'
+
+🗂 9. Restore File Backups
+9.1 Copy tar files
+docker compose -f compose.custom.yaml cp /backups/erp/public_files.tar backend:/home/frappe/frappe-bench/
+docker compose -f compose.custom.yaml cp /backups/erp/private_files.tar backend:/home/frappe/frappe-bench/
+
+9.2 Extract inside backend
+docker compose -f compose.custom.yaml exec backend bash
+cd /home/frappe/frappe-bench
+
+mkdir -p sites/localhost/public/files
+mkdir -p sites/localhost/private/files
+
+
+Your archive paths look like:
+
+home/<user>/frappe-bench/sites/<oldsite>/private/files/...
+
+
+Use --strip-components=6:
+
+tar -xvf private_files.tar -C sites/localhost/private --strip-components=6
+tar -xvf public_files.tar  -C sites/localhost/public --strip-components=6
+
+
+Exit backend:
+
+exit
+
+🔑 10. Restore the Old Encryption Key
+
+Open old site_config.json and copy:
+
+"encryption_key": "xxxx..."
+
+
+Replace in:
+
+docker compose -f compose.custom.yaml exec backend bash -c \
+  "nano /home/frappe/frappe-bench/sites/localhost/site_config.json"
+
+🔁 11. Migrate & Clear Cache
+docker compose -f compose.custom.yaml exec backend bash -c \
+  "cd /home/frappe/frappe-bench && bench --site localhost migrate"
+
+docker compose -f compose.custom.yaml exec backend bash -c \
+  "cd /home/frappe/frappe-bench && bench --site localhost clear-cache"
+
+🔄 12. Restart All Services
+docker compose -f compose.custom.yaml restart backend frontend websocket scheduler queue-short queue-long
+
+🎉 13. Login and Verify
+
+Open:
+
+http://192.168.4.10:8080
+
+
+Login using your old ERPNext credentials (not the new-site password).
+
+Check:
+
+Customers / Items / Invoices exist
+
+Attachments load
+
+HRMS modules load
+
+No DB errors
+
+No "site does not exist" errors
+
+🟢 DONE — Your ERPNext + HRMS v15 system is restored and running!
+
+This process ensures a fully reproducible, clean, and battle-tested deployment workflow.
