@@ -189,7 +189,10 @@ validate_files() {
 check_services() {
     print_info "Checking if Docker services are running..."
 
-    if ! docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    # Check if any core services are running
+    local running_services=$(docker compose -f "$COMPOSE_FILE" ps --format "table {{.Service}}\t{{.State}}" 2>/dev/null | grep -c "running" || echo "0")
+
+    if [[ $running_services -eq 0 ]]; then
         print_error "Docker services are not running. Please start them first with:"
         print_error "  docker compose -f $COMPOSE_FILE up -d"
         exit 1
@@ -415,7 +418,7 @@ clear_cache() {
 restart_services() {
     print_info "Restarting backend services..."
 
-    docker compose -f "$COMPOSE_FILE" restart backend frontend websocket scheduler queue-short queue-long || {
+    docker compose -f "$COMPOSE_FILE" restart backend frontend websocket scheduler queue-short queue-long internal-proxy || {
         print_warning "Failed to restart some services"
     }
 

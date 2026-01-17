@@ -229,13 +229,16 @@ check_docker_services() {
         return 0
     fi
 
-    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    # Check if any core services are running
+    local running_services=$(docker compose -f "$COMPOSE_FILE" ps --format "table {{.Service}}\t{{.State}}" 2>/dev/null | grep -c "running" || echo "0")
+
+    if [[ $running_services -gt 0 ]]; then
         print_success "Docker services are running"
 
         # Check specific services
         local services=("backend" "db" "frontend" "websocket")
         for service in "${services[@]}"; do
-            if docker compose -f "$COMPOSE_FILE" ps "$service" 2>/dev/null | grep -q "Up"; then
+            if docker compose -f "$COMPOSE_FILE" ps "$service" 2>/dev/null | grep -q "running\|Up"; then
                 echo "    ✓ $service is running"
             else
                 echo "    ✗ $service is not running"
@@ -252,15 +255,33 @@ check_docker_services() {
 check_disk_space() {
     print_info "Checking disk space..."
 
-    local db_size=$(stat -f "%z" "$BACKUP_DB_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_DB_PATH" 2>/dev/null || echo "0")
-    local public_size=$(stat -f "%z" "$BACKUP_PUBLIC_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_PUBLIC_PATH" 2>/dev/null || echo "0")
-    local private_size=$(stat -f "%z" "$BACKUP_PRIVATE_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_PRIVATE_PATH" 2>/dev/null || echo "0")
+    # Initialize variables with defaults
+    local db_size=0
+    local public_size=0
+    local private_size=0
+    local available_space=0
+
+    # Get file sizes with proper error handling
+    if [[ -f "$BACKUP_DB_PATH" ]]; then
+        db_size=$(stat -f "%z" "$BACKUP_DB_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_DB_PATH" 2>/dev/null || echo "0")
+    fi
+
+    if [[ -f "$BACKUP_PUBLIC_PATH" ]]; then
+        public_size=$(stat -f "%z" "$BACKUP_PUBLIC_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_PUBLIC_PATH" 2>/dev/null || echo "0")
+    fi
+
+    if [[ -f "$BACKUP_PRIVATE_PATH" ]]; then
+        private_size=$(stat -f "%z" "$BACKUP_PRIVATE_PATH" 2>/dev/null || stat -c "%s" "$BACKUP_PRIVATE_PATH" 2>/dev/null || echo "0")
+    fi
 
     local total_size=$((db_size + public_size + private_size))
     local required_space=$((total_size * 3))  # 3x for safety
 
-    local available_space=$(df . | tail -1 | awk '{print $4}')
-    available_space=$((available_space * 1024))  # Convert to bytes
+    # Get available disk space with error handling
+    local df_output=$(df . 2>/dev/null | tail -1 | awk '{print $4}')
+    if [[ -n "$df_output" && "$df_output" =~ ^[0-9]+$ ]]; then
+        available_space=$((df_output * 1024))  # Convert to bytes
+    fi
 
     echo "    Total backup size: $(numfmt --to=iec $total_size 2>/dev/null || echo "$total_size bytes")"
     echo "    Recommended free space: $(numfmt --to=iec $required_space 2>/dev/null || echo "$required_space bytes")"
