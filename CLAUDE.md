@@ -90,6 +90,10 @@ docker compose -f compose.custom.yaml exec backend bash -c \
 docker compose -f compose.custom.yaml exec backend bash -c \
   "cd /home/frappe/frappe-bench && bench set-default-site localhost"
 
+# Configure host_name for PDF generation (wkhtmltopdf)
+docker compose -f compose.custom.yaml exec backend bash -c \
+  "cd /home/frappe/frappe-bench && bench --site localhost set-config host_name https://erp.mydomain.com"
+
 # Migrate site (after restore or updates)
 docker compose -f compose.custom.yaml exec backend bash -c \
   "cd /home/frappe/frappe-bench && bench --site localhost migrate"
@@ -133,6 +137,21 @@ docker compose -f compose.custom.yaml exec backend bash -c \
    tar -xvf public_files.tar -C sites/localhost/public --strip-components=6"
 ```
 
+### SSL Certificates for Internal Proxy
+
+Generate self-signed certificates for internal HTTPS (required for wkhtmltopdf PDF generation):
+
+```bash
+mkdir -p docker-configs/certs
+
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout docker-configs/certs/internal.key \
+  -out docker-configs/certs/internal.crt \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=erp.mydomain.com"
+
+chmod 600 docker-configs/certs/internal.key
+```
+
 ### Testing
 
 ```bash
@@ -159,12 +178,20 @@ The compose setup defines these core services:
 - **queue-short**: Worker for short-running background jobs
 - **queue-long**: Worker for long-running background jobs (also handles short/default queues)
 - **scheduler**: Bench scheduler service for cron-like scheduled tasks
-- **internal-proxy**: Additional NGINX proxy for internal HTTPS routing (custom addition)
+- **internal-proxy**: NGINX proxy providing internal HTTPS for wkhtmltopdf PDF generation ([ref: frappe_docker#1547](https://github.com/frappe/frappe_docker/issues/1547))
 
 Database and cache services come from override files:
 - **db**: MariaDB 11.8 or PostgreSQL (via overrides)
 - **redis-cache**: Redis for caching layer
 - **redis-queue**: Redis for job queue
+
+### Internal HTTPS Proxy
+
+The `internal-proxy` service enables wkhtmltopdf to generate PDFs by providing internal HTTPS access:
+- Network alias: `erp.mydomain.com` (resolvable within Docker network)
+- Configuration: `docker-configs/nginx-internal.conf`
+- SSL certificates: `docker-configs/certs/internal.{crt,key}`
+- Site must be configured with: `bench --site <sitename> set-config host_name https://erp.mydomain.com`
 
 ### Image Types
 

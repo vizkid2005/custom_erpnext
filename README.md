@@ -86,7 +86,22 @@ ADMIN_PASSWORD=<your-secure-admin-password>
 FRAPPE_SITE_NAME_HEADER=localhost
 ```
 
-## 4. Generate Clean Compose File
+## 4. Generate SSL Certificates for Internal Proxy
+
+Generate self-signed certificates for wkhtmltopdf PDF generation ([ref: frappe_docker#1547](https://github.com/frappe/frappe_docker/issues/1547)):
+
+```bash
+mkdir -p docker-configs/certs
+
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout docker-configs/certs/internal.key \
+  -out docker-configs/certs/internal.crt \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=erp.mydomain.com"
+
+chmod 600 docker-configs/certs/internal.key
+```
+
+## 6. Generate Clean Compose File
 
 ```bash
 docker compose --env-file example.env \
@@ -97,7 +112,7 @@ docker compose --env-file example.env \
   config > compose.custom.yaml
 ```
 
-## 5. Remove Existing Containers & Volumes
+## 7. Remove Existing Containers & Volumes
 
 Clean start:
 
@@ -106,7 +121,7 @@ docker compose -f compose.custom.yaml down -v
 docker volume rm frappe_docker_db-data frappe_docker_sites frappe_docker_redis-queue-data 2>/dev/null
 ```
 
-## 6. Start Fresh Stack
+## 8. Start Fresh Stack
 
 ```bash
 docker compose -f compose.custom.yaml up -d
@@ -118,7 +133,7 @@ Check containers:
 docker ps
 ```
 
-## 7. Create a New Site
+## 9. Create a New Site
 
 Inside backend:
 
@@ -140,10 +155,11 @@ bench new-site localhost \
 
 **Note**: Use the same passwords you set in your `example.env` file.
 
-Set default:
+Set default and configure host for PDF generation:
 
 ```bash
 bench set-default-site localhost
+bench --site localhost set-config host_name https://erp.mydomain.com
 exit
 ```
 
@@ -157,7 +173,7 @@ You should now see ERPNext login at:
 - `http://localhost:8080`
 - `http://<your-server-ip>:8080` (example: `http://192.168.1.100:8080`)
 
-## 8. Restore Database Backup
+## 10. Restore Database Backup
 
 Place your backup files in an accessible location (example: `/backups/erp/`).
 
@@ -167,7 +183,7 @@ Place your backup files in an accessible location (example: `/backups/erp/`).
 - `private_files.tar` - Private file attachments
 - `site_config.json` - Your old site configuration (contains encryption key)
 
-### 8.1 Extract SQL
+### 10.1 Extract SQL
 
 Replace `/path/to/backup/` with your actual backup location:
 
@@ -177,7 +193,7 @@ gzip -d /path/to/backup/database.sql.gz
 
 **Example**: `gzip -d /backups/erp/database.sql.gz`
 
-### 8.2 Copy into db container
+### 10.2 Copy into db container
 
 ```bash
 docker compose -f compose.custom.yaml cp /path/to/backup/database.sql db:/tmp/database.sql
@@ -185,7 +201,7 @@ docker compose -f compose.custom.yaml cp /path/to/backup/database.sql db:/tmp/da
 
 **Example**: `docker compose -f compose.custom.yaml cp /backups/erp/database.sql db:/tmp/database.sql`
 
-### 8.3 Get DB name & password from site_config.json
+### 10.3 Get DB name & password from site_config.json
 
 ```bash
 docker compose -f compose.custom.yaml exec backend bash -c \
@@ -201,7 +217,7 @@ Example output (your values will be different):
 
 **Note**: Copy these exact values for use in the next step.
 
-### 8.4 Import SQL
+### 10.4 Import SQL
 
 Replace `<your-db-name>` with the `db_name` value from the previous step:
 
@@ -216,9 +232,9 @@ docker compose -f compose.custom.yaml exec db bash -c \
   'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" _abc123def456ghij < /tmp/database.sql'
 ```
 
-## 9. Restore File Backups
+## 11. Restore File Backups
 
-### 9.1 Copy tar files
+### 11.1 Copy tar files
 
 Replace `/path/to/backup/` with your actual backup location:
 
@@ -233,7 +249,7 @@ docker compose -f compose.custom.yaml cp /backups/erp/public_files.tar backend:/
 docker compose -f compose.custom.yaml cp /backups/erp/private_files.tar backend:/home/frappe/frappe-bench/
 ```
 
-### 9.2 Extract inside backend
+### 11.2 Extract inside backend
 
 ```bash
 docker compose -f compose.custom.yaml exec backend bash
@@ -268,7 +284,7 @@ Exit backend:
 exit
 ```
 
-## 10. Restore the Old Encryption Key
+## 12. Restore the Old Encryption Key
 
 **CRITICAL**: The encryption key from your old backup must be copied to the new site, otherwise encrypted data will be inaccessible.
 
@@ -287,7 +303,7 @@ docker compose -f compose.custom.yaml exec backend bash -c \
 
 **Example**: If your old encryption_key was `a1b2c3d4e5f6...`, paste that exact value into the new site_config.json.
 
-## 11. Migrate & Clear Cache
+## 13. Migrate & Clear Cache
 
 ```bash
 docker compose -f compose.custom.yaml exec backend bash -c \
@@ -297,13 +313,13 @@ docker compose -f compose.custom.yaml exec backend bash -c \
   "cd /home/frappe/frappe-bench && bench --site localhost clear-cache"
 ```
 
-## 12. Restart All Services
+## 14. Restart All Services
 
 ```bash
 docker compose -f compose.custom.yaml restart backend frontend websocket scheduler queue-short queue-long
 ```
 
-## 13. Login and Verify
+## 15. Login and Verify
 
 Open: `http://<your-server-ip>:8080` or `http://localhost:8080`
 
@@ -315,6 +331,7 @@ Check:
 - Customers / Items / Invoices exist
 - Attachments load
 - HRMS modules load
+- PDF generation works (test print format)
 - No DB errors
 - No "site does not exist" errors
 
