@@ -28,3 +28,6 @@ venv
 
 # NodeJS
 node_modules
+
+# Certificates
+docker-configs/certs
