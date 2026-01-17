@@ -13,7 +13,7 @@ It reflects the final working solution used in December 2025.
 ## 1. Prerequisites
 
 - Docker & Docker Compose installed
-- Apple Silicon: use `linux/arm64`
+- Linux x86_64/AMD64 platform
 - Repository cloned:
 
 ```bash
@@ -38,10 +38,10 @@ Create `apps.json`:
 ]
 ```
 
-Base64-encode it (macOS compatible):
+Base64-encode it:
 
 ```bash
-export APPS_JSON_BASE64="$(base64 < apps.json | tr -d '\n')"
+export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
 ```
 
 Build your image:
@@ -67,15 +67,14 @@ CUSTOM_IMAGE=erpnext-hrms-local
 CUSTOM_TAG=15
 PULL_POLICY=never
 
-PLATFORM=linux/arm64     # on Apple Silicon
-
 MYSQL_ROOT_PASSWORD=123
 MARIADB_ROOT_PASSWORD=123
 
 SITE_NAME=localhost
 ADMIN_PASSWORD=Admin123!
 
-# Required when accessing via IP (e.g., 192.168.4.10)
+# Required for site resolution (allows access via IP addresses like 192.168.4.10)
+# This is the standard for this setup
 FRAPPE_SITE_NAME_HEADER=localhost
 ```
 
@@ -89,8 +88,6 @@ docker compose --env-file example.env \
   -f overrides/compose.noproxy.yaml \
   config > compose.custom.yaml
 ```
-
-Remove any `platform: linux/amd64` lines if present.
 
 ## 5. Remove Existing Containers & Volumes
 
@@ -126,8 +123,8 @@ Create site:
 
 ```bash
 bench new-site localhost \
+  --mariadb-user-host-login-scope=% \
   --admin-password "Admin123!" \
-  --db-root-username root \
   --db-root-password "123" \
   --install-app erpnext \
   --install-app hrms
