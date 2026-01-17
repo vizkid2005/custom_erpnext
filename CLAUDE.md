@@ -8,6 +8,9 @@ This is a **frappe_docker** repository for deploying ERPNext + HRMS (Human Resou
 
 Current configuration includes ERPNext v15 with HRMS v15 apps.
 
+**Platform**: Linux x86_64/AMD64
+**Working versions**: Python 3.11.6, Node.js 18.18.2
+
 ## Common Commands
 
 ### Building Custom Images
@@ -31,7 +34,7 @@ docker build \
   --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
   --build-arg=FRAPPE_BRANCH=version-15 \
   --build-arg=PYTHON_VERSION=3.11.6 \
-  --build-arg=NODE_VERSION=20.19.2 \
+  --build-arg=NODE_VERSION=18.18.2 \
   --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
   --tag=erpnext-hrms-local:15 \
   --file=images/layered/Containerfile .
@@ -77,6 +80,7 @@ All bench commands run inside the `backend` container:
 # Create a new site
 docker compose -f compose.custom.yaml exec backend bash -c \
   "cd /home/frappe/frappe-bench && bench new-site localhost \
+  --mariadb-user-host-login-scope=% \
   --admin-password 'Admin123!' \
   --db-root-password '123' \
   --install-app erpnext \
@@ -218,8 +222,7 @@ When restoring from backup, the `encryption_key` from the original `site_config.
 
 ### Platform Considerations
 
-- Apple Silicon: Set `PLATFORM=linux/arm64` in env file
-- Linux AMD64: Default platform `linux/amd64` is used
+- This setup is configured for Linux x86_64/AMD64 platform
 - Multi-platform builds use QEMU emulation in CI/CD
 
 ### Environment Variables
