@@ -8,20 +8,26 @@ This guide documents the exact steps required to:
 - Restore a full ERPNext v15 backup
 - Fix all common issues (site routing, DB users, permissions, etc.)
 
-It reflects the final working solution used in December 2025.
+This guide provides a production-ready, reproducible deployment workflow.
 
 ## 1. Prerequisites
 
 - Docker & Docker Compose installed
 - Linux x86_64/AMD64 platform
-- Repository cloned:
+- frappe_docker repository cloned:
 
 ```bash
-git clone <your-custom-repo> custom_erpnext
+git clone <your-frappe-docker-repo-url> custom_erpnext
 cd custom_erpnext
 ```
 
-- Backup files available:
+**Example**:
+```bash
+git clone https://github.com/frappe/frappe_docker.git custom_erpnext
+cd custom_erpnext
+```
+
+- Backup files available (if restoring from existing ERPNext installation):
   - `database.sql.gz`
   - `public_files.tar`
   - `private_files.tar`
@@ -67,13 +73,15 @@ CUSTOM_IMAGE=erpnext-hrms-local
 CUSTOM_TAG=15
 PULL_POLICY=never
 
-MYSQL_ROOT_PASSWORD=123
-MARIADB_ROOT_PASSWORD=123
+# Set secure passwords for database root access
+MYSQL_ROOT_PASSWORD=<your-secure-root-password>
+MARIADB_ROOT_PASSWORD=<your-secure-root-password>
 
 SITE_NAME=localhost
-ADMIN_PASSWORD=Admin123!
+# Set a strong admin password for ERPNext login
+ADMIN_PASSWORD=<your-secure-admin-password>
 
-# Required for site resolution (allows access via IP addresses like 192.168.4.10)
+# Required for site resolution (allows access via IP addresses)
 # This is the standard for this setup
 FRAPPE_SITE_NAME_HEADER=localhost
 ```
@@ -124,11 +132,13 @@ Create site:
 ```bash
 bench new-site localhost \
   --mariadb-user-host-login-scope=% \
-  --admin-password "Admin123!" \
-  --db-root-password "123" \
+  --admin-password "<your-secure-admin-password>" \
+  --db-root-password "<your-secure-root-password>" \
   --install-app erpnext \
   --install-app hrms
 ```
+
+**Note**: Use the same passwords you set in your `example.env` file.
 
 Set default:
 
@@ -145,23 +155,35 @@ docker compose -f compose.custom.yaml restart backend frontend websocket schedul
 
 You should now see ERPNext login at:
 - `http://localhost:8080`
-- `http://192.168.4.10:8080`
+- `http://<your-server-ip>:8080` (example: `http://192.168.1.100:8080`)
 
 ## 8. Restore Database Backup
 
-Place your backup in `/backups/erp/`.
+Place your backup files in an accessible location (example: `/backups/erp/`).
+
+**Required files**:
+- `database.sql.gz` - Your database backup
+- `public_files.tar` - Public file attachments
+- `private_files.tar` - Private file attachments
+- `site_config.json` - Your old site configuration (contains encryption key)
 
 ### 8.1 Extract SQL
 
+Replace `/path/to/backup/` with your actual backup location:
+
 ```bash
-gzip -d /backups/erp/database.sql.gz
+gzip -d /path/to/backup/database.sql.gz
 ```
+
+**Example**: `gzip -d /backups/erp/database.sql.gz`
 
 ### 8.2 Copy into db container
 
 ```bash
-docker compose -f compose.custom.yaml cp /backups/erp/database.sql db:/tmp/database.sql
+docker compose -f compose.custom.yaml cp /path/to/backup/database.sql db:/tmp/database.sql
 ```
+
+**Example**: `docker compose -f compose.custom.yaml cp /backups/erp/database.sql db:/tmp/database.sql`
 
 ### 8.3 Get DB name & password from site_config.json
 
@@ -170,24 +192,42 @@ docker compose -f compose.custom.yaml exec backend bash -c \
   "cat /home/frappe/frappe-bench/sites/localhost/site_config.json | grep -E 'db_name|db_password'"
 ```
 
-Example output:
+Example output (your values will be different):
 
 ```json
-"db_name": "_77f5e42251d79843",
-"db_password": "FvbE6ZYLo*RWEWsB"
+"db_name": "_abc123def456ghij",
+"db_password": "RandomGeneratedPassword123"
 ```
+
+**Note**: Copy these exact values for use in the next step.
 
 ### 8.4 Import SQL
 
+Replace `<your-db-name>` with the `db_name` value from the previous step:
+
 ```bash
 docker compose -f compose.custom.yaml exec db bash -c \
-  'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" _77f5e42251d79843 < /tmp/database.sql'
+  'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" <your-db-name> < /tmp/database.sql'
+```
+
+**Example**: If your db_name was `_abc123def456ghij`, the command would be:
+```bash
+docker compose -f compose.custom.yaml exec db bash -c \
+  'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" _abc123def456ghij < /tmp/database.sql'
 ```
 
 ## 9. Restore File Backups
 
 ### 9.1 Copy tar files
 
+Replace `/path/to/backup/` with your actual backup location:
+
+```bash
+docker compose -f compose.custom.yaml cp /path/to/backup/public_files.tar backend:/home/frappe/frappe-bench/
+docker compose -f compose.custom.yaml cp /path/to/backup/private_files.tar backend:/home/frappe/frappe-bench/
+```
+
+**Example**:
 ```bash
 docker compose -f compose.custom.yaml cp /backups/erp/public_files.tar backend:/home/frappe/frappe-bench/
 docker compose -f compose.custom.yaml cp /backups/erp/private_files.tar backend:/home/frappe/frappe-bench/
@@ -203,13 +243,19 @@ mkdir -p sites/localhost/public/files
 mkdir -p sites/localhost/private/files
 ```
 
-Your archive paths look like:
+Check your archive structure to determine the correct `--strip-components` value. Your archive paths may look like:
 
 ```
-home/<user>/frappe-bench/sites/<oldsite>/private/files/...
+home/<username>/frappe-bench/sites/<old-sitename>/private/files/...
 ```
 
-Use `--strip-components=6`:
+**Example**: If the path is `home/john/frappe-bench/sites/erp.example.com/private/files/...`, use `--strip-components=6`:
+
+```bash
+# Count the directory levels: home(1)/john(2)/frappe-bench(3)/sites(4)/erp.example.com(5)/private(6)/files
+```
+
+Extract files:
 
 ```bash
 tar -xvf private_files.tar -C sites/localhost/private --strip-components=6
@@ -224,18 +270,22 @@ exit
 
 ## 10. Restore the Old Encryption Key
 
-Open old `site_config.json` and copy:
+**CRITICAL**: The encryption key from your old backup must be copied to the new site, otherwise encrypted data will be inaccessible.
+
+Open your old backup's `site_config.json` and copy the encryption key:
 
 ```json
-"encryption_key": "xxxx..."
+"encryption_key": "your-original-encryption-key-from-backup"
 ```
 
-Replace in:
+Edit the new site's config and replace the encryption_key value:
 
 ```bash
 docker compose -f compose.custom.yaml exec backend bash -c \
   "nano /home/frappe/frappe-bench/sites/localhost/site_config.json"
 ```
+
+**Example**: If your old encryption_key was `a1b2c3d4e5f6...`, paste that exact value into the new site_config.json.
 
 ## 11. Migrate & Clear Cache
 
@@ -255,9 +305,11 @@ docker compose -f compose.custom.yaml restart backend frontend websocket schedul
 
 ## 13. Login and Verify
 
-Open: `http://192.168.4.10:8080`
+Open: `http://<your-server-ip>:8080` or `http://localhost:8080`
 
-Login using your old ERPNext credentials (not the new-site password).
+**Example**: `http://192.168.1.100:8080`
+
+Login using your old ERPNext credentials from the backup (not the new-site password you set during site creation).
 
 Check:
 - Customers / Items / Invoices exist
