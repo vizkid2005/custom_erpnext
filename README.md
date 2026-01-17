@@ -35,16 +35,7 @@ cd custom_erpnext
 
 ## 2. Build ERPNext + HRMS Custom Image
 
-Create `apps.json`:
-
-```json
-[
-  { "url": "https://github.com/frappe/erpnext", "branch": "version-15" },
-  { "url": "https://github.com/frappe/hrms", "branch": "version-15" }
-]
-```
-
-Base64-encode it:
+Base64-encode `apps.json`:
 
 ```bash
 export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
@@ -98,7 +89,6 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -out docker-configs/certs/internal.crt \
   -subj "/C=US/ST=State/L=City/O=Organization/CN=erp.mydomain.com"
 
-chmod 600 docker-configs/certs/internal.key
 ```
 
 ## 6. Generate Clean Compose File
