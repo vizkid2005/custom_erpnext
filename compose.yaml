@@ -90,6 +90,19 @@ services:
     platform: linux/amd64
     command: bench schedule
 
+  internal-proxy:
+    image: nginx:alpine
+    networks:
+      default:
+        aliases:
+          - erp.mydomain.com
+    depends_on:
+      - frontend
+    volumes:
+      - ./docker-configs/nginx-internal.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker-configs/certs/internal.crt:/etc/nginx/ssl/internal.crt:ro
+      - ./docker-configs/certs/internal.key:/etc/nginx/ssl/internal.key:ro
+
 # ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
