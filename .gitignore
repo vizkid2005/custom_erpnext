@@ -31,3 +31,6 @@ node_modules
 
 # Certificates
 docker-configs/certs
+
+# Rendered per-host by homelab-infra (holds the real domain)
+docker-configs/nginx-internal.conf
